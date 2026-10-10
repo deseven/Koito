@@ -263,8 +263,10 @@ func Run(
 		}
 	}()
 
-	l.Info().Msg("Engine: Running duration backfill task")
-	go catalog.BackfillTrackDurationsFromMusicBrainz(ctx, store, mbzC)
+	if cfg.BackfillMediaOnStartup() {
+		l.Info().Msg("Engine: Running duration backfill task")
+		go catalog.BackfillTrackDurationsFromMusicBrainz(ctx, store, mbzC)
+	}
 
 	l.Info().Msg("Engine: Initialization finished")
 	quit := make(chan os.Signal, 1)
