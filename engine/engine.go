@@ -251,13 +251,15 @@ func Run(
 			RunImporter(l, store, mbzC)
 		}
 
-		l.Info().Msg("Engine: Attempting to fetch missing artist images")
-		if err := catalog.FetchMissingArtistImages(ctx, store); err != nil {
-			l.Err(err).Msg("Engine: Failed to fetch missing artist images")
-		}
-		l.Info().Msg("Engine: Attempting to fetch missing album images")
-		if err := catalog.FetchMissingAlbumImages(ctx, store); err != nil {
-			l.Err(err).Msg("Engine: Failed to fetch missing album images")
+		if cfg.BackfillMediaOnStartup() {
+			l.Info().Msg("Engine: Attempting to fetch missing artist images")
+			if err := catalog.FetchMissingArtistImages(ctx, store); err != nil {
+				l.Err(err).Msg("Engine: Failed to fetch missing artist images")
+			}
+			l.Info().Msg("Engine: Attempting to fetch missing album images")
+			if err := catalog.FetchMissingAlbumImages(ctx, store); err != nil {
+				l.Err(err).Msg("Engine: Failed to fetch missing album images")
+			}
 		}
 	}()
 
