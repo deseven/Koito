@@ -99,6 +99,12 @@ func (s *Sqlite) QueryRow(query string, args ...any) *sql.Row {
 	return s.db.QueryRow(query, args...)
 }
 
+// Query exposes db.Query. Used by maintenance commands, not part of the DB
+// interface this package implements.
+func (s *Sqlite) Query(query string, args ...any) (*sql.Rows, error) {
+	return s.db.Query(query, args...)
+}
+
 func (s *Sqlite) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
