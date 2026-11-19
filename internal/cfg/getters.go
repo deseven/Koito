@@ -187,6 +187,15 @@ func BackfillMediaOnStartup() bool {
 	return globalConfig.backfillMediaOnStartup
 }
 
+// ImageRetryAfterDays is the number of days before an image fetch that found
+// nothing is attempted again. Zero disables the wait, i.e. every startup
+// retries everything.
+func ImageRetryAfterDays() int {
+	lock.RLock()
+	defer lock.RUnlock()
+	return globalConfig.imageRetryAfterDays
+}
+
 func ArtistSeparators() []*regexp.Regexp {
 	lock.RLock()
 	defer lock.RUnlock()

@@ -3,9 +3,11 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/gabehf/koito/imagecache"
 	"github.com/gabehf/koito/internal/cfg"
@@ -51,13 +53,14 @@ func PruneOrphanedImages(ctx context.Context, store db.ImageStore) error {
 
 func FetchMissingArtistImages(ctx context.Context, store db.ArtistStore) error {
 	l := logger.FromContext(ctx)
+	attemptedBefore := imageAttemptCutoff()
 	l.Info().Msg("FetchMissingArtistImages: Starting backfill of missing artist images")
 
 	var from int32 = 0
 
 	for {
 		l.Debug().Int32("ID", from).Msg("Fetching artist images to backfill from ID")
-		artists, err := store.ArtistsWithoutImages(ctx, from)
+		artists, err := store.ArtistsWithoutImages(ctx, from, attemptedBefore)
 		if err != nil {
 			return fmt.Errorf("FetchMissingArtistImages: failed to fetch artists for image backfill: %w", err)
 		}
@@ -91,12 +94,11 @@ func FetchMissingArtistImages(ctx context.Context, store db.ArtistStore) error {
 			})
 			if imgErr == nil && imgUrl != "" {
 				imgid = uuid.New()
-				err = store.UpdateArtist(ctx, db.UpdateArtistOpts{
+				if err := store.UpdateArtist(ctx, db.UpdateArtistOpts{
 					ID:       artist.ID,
 					Image:    imgid,
 					ImageSrc: imgUrl,
-				})
-				if err != nil {
+				}); err != nil {
 					l.Err(err).
 						Str("title", artist.Name).
 						Msg("FetchMissingArtistImages: Failed to update artist with image in database")
@@ -106,22 +108,27 @@ func FetchMissingArtistImages(ctx context.Context, store db.ArtistStore) error {
 					Str("name", artist.Name).
 					Msg("FetchMissingArtistImages: Successfully fetched missing artist image")
 			} else {
-				l.Err(err).
+				l.Info().
 					Str("name", artist.Name).
-					Msg("FetchMissingArtistImages: Failed to fetch artist image")
+					Msg("FetchMissingArtistImages: No artist image found")
+			}
+			// remember the attempt either way, so it is not repeated every startup
+			if err := store.MarkArtistImageAttempt(ctx, artist.ID, time.Now().Unix()); err != nil {
+				l.Err(err).Msg("FetchMissingArtistImages: Failed to record image fetch attempt")
 			}
 		}
 	}
 }
 func FetchMissingAlbumImages(ctx context.Context, store db.AlbumStore) error {
 	l := logger.FromContext(ctx)
+	attemptedBefore := imageAttemptCutoff()
 	l.Info().Msg("FetchMissingAlbumImages: Starting backfill of missing album images")
 
 	var from int32 = 0
 
 	for {
 		l.Debug().Int32("ID", from).Msg("Fetching album images to backfill from ID")
-		albums, err := store.AlbumsWithoutImages(ctx, from)
+		albums, err := store.AlbumsWithoutImages(ctx, from, attemptedBefore)
 		if err != nil {
 			return fmt.Errorf("FetchMissingAlbumImages: failed to fetch albums for image backfill: %w", err)
 		}
@@ -155,12 +162,11 @@ func FetchMissingAlbumImages(ctx context.Context, store db.AlbumStore) error {
 			})
 			if imgErr == nil && imgUrl != "" {
 				imgid = uuid.New()
-				err = store.UpdateAlbum(ctx, db.UpdateAlbumOpts{
+				if err := store.UpdateAlbum(ctx, db.UpdateAlbumOpts{
 					ID:       album.ID,
 					Image:    imgid,
 					ImageSrc: imgUrl,
-				})
-				if err != nil {
+				}); err != nil {
 					l.Err(err).
 						Str("title", album.Title).
 						Msg("FetchMissingAlbumImages: Failed to update album with image in database")
@@ -170,12 +176,28 @@ func FetchMissingAlbumImages(ctx context.Context, store db.AlbumStore) error {
 					Str("name", album.Title).
 					Msg("FetchMissingAlbumImages: Successfully fetched missing album image")
 			} else {
-				l.Err(err).
+				l.Info().
 					Str("name", album.Title).
-					Msg("FetchMissingAlbumImages: Failed to fetch album image")
+					Msg("FetchMissingAlbumImages: No album image found")
+			}
+			// remember the attempt either way, so it is not repeated every startup
+			if err := store.MarkAlbumImageAttempt(ctx, album.ID, time.Now().Unix()); err != nil {
+				l.Err(err).Msg("FetchMissingAlbumImages: Failed to record image fetch attempt")
 			}
 		}
 	}
+}
+
+// imageAttemptCutoff returns the unix timestamp before which an image fetch must
+// have happened for the entity to be attempted again: entities attempted later
+// (recently, without success) are skipped until the retry window has passed.
+// With a retry window of zero or less every entity is retried on each run.
+func imageAttemptCutoff() int64 {
+	days := cfg.ImageRetryAfterDays()
+	if days <= 0 {
+		return math.MaxInt64
+	}
+	return time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
 }
 
 // TODO: move this function into models

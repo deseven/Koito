@@ -150,6 +150,11 @@ If the environment variable is defined without **and** with the suffix at the sa
 - Default: `true`
 - Description: When false, Koito will not fetch missing artist and album images, or backfill track durations, during startup.
 
+##### KOITO_IMAGE_RETRY_AFTER_DAYS
+
+- Default: `30`
+- Description: How many days to wait before an artist or album that could not be given an image is attempted again. Successful results are cached permanently, so this only applies to failed lookups. Set to `0` to retry every entity on every startup.
+
 ##### KOITO_CORS_ALLOWED_ORIGINS
 
 - Default: No CORS policy

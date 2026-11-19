@@ -506,13 +506,13 @@ func (s *Sqlite) GetTopAlbumsPaginated(ctx context.Context, opts db.GetItemsOpts
 	}, nil
 }
 
-func (s *Sqlite) AlbumsWithoutImages(ctx context.Context, from int32) ([]*models.Album, error) {
+func (s *Sqlite) AlbumsWithoutImages(ctx context.Context, from int32, attemptedBefore int64) ([]*models.Album, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, musicbrainz_id, image, image_source, various_artists, title
 		FROM releases_with_title
-		WHERE image IS NULL AND id > ?
+		WHERE image IS NULL AND image_attempted_at < ? AND id > ?
 		ORDER BY id ASC LIMIT 20`,
-		from)
+		attemptedBefore, from)
 	if err != nil {
 		return nil, fmt.Errorf("AlbumsWithoutImages: %w", err)
 	}
@@ -549,6 +549,16 @@ func (s *Sqlite) AlbumsWithoutImages(ctx context.Context, from int32) ([]*models
 		albums = append(albums, &a)
 	}
 	return albums, rows.Err()
+}
+
+// MarkAlbumImageAttempt records that an image fetch was attempted for the
+// release, so it is not retried until the retry window has passed.
+func (s *Sqlite) MarkAlbumImageAttempt(ctx context.Context, id int32, at int64) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE releases SET image_attempted_at = ? WHERE id = ?`, at, id); err != nil {
+		return fmt.Errorf("MarkAlbumImageAttempt: %w", err)
+	}
+	return nil
 }
 
 func (s *Sqlite) MergeAlbums(ctx context.Context, fromId, toId int32, replaceImage bool) error {

@@ -27,7 +27,8 @@ type ArtistStore interface {
 	SearchArtists(ctx context.Context, q string) ([]*models.Artist, error)
 	CountArtists(ctx context.Context, timeframe Timeframe) (int64, error)
 	CountNewArtists(ctx context.Context, timeframe Timeframe) (int64, error)
-	ArtistsWithoutImages(ctx context.Context, from int32) ([]*models.Artist, error)
+	ArtistsWithoutImages(ctx context.Context, from int32, attemptedBefore int64) ([]*models.Artist, error)
+	MarkArtistImageAttempt(ctx context.Context, id int32, at int64) error
 }
 
 type AlbumStore interface {
@@ -46,7 +47,8 @@ type AlbumStore interface {
 	SearchAlbums(ctx context.Context, q string) ([]*models.Album, error)
 	CountAlbums(ctx context.Context, timeframe Timeframe) (int64, error)
 	CountNewAlbums(ctx context.Context, timeframe Timeframe) (int64, error)
-	AlbumsWithoutImages(ctx context.Context, from int32) ([]*models.Album, error)
+	AlbumsWithoutImages(ctx context.Context, from int32, attemptedBefore int64) ([]*models.Album, error)
+	MarkAlbumImageAttempt(ctx context.Context, id int32, at int64) error
 }
 
 type TrackStore interface {

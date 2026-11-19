@@ -48,10 +48,15 @@ const (
 	IMPORT_AFTER_UNIX_ENV          = "KOITO_IMPORT_AFTER_UNIX"
 	FETCH_IMAGES_DURING_IMPORT_ENV = "KOITO_FETCH_IMAGES_DURING_IMPORT"
 	BACKFILL_MEDIA_ON_STARTUP_ENV  = "KOITO_BACKFILL_MEDIA_ON_STARTUP"
+	IMAGE_RETRY_AFTER_DAYS_ENV     = "KOITO_IMAGE_RETRY_AFTER_DAYS"
 	ARTIST_SEPARATORS_ENV          = "KOITO_ARTIST_SEPARATORS_REGEX"
 	LOGIN_GATE_ENV                 = "KOITO_LOGIN_GATE"
 	FORCE_TZ                       = "KOITO_FORCE_TZ"
 )
+
+// defaultImageRetryAfterDays is how long an entity that could not be given an
+// image is left alone before the image fetch is attempted again.
+const defaultImageRetryAfterDays = 30
 
 type config struct {
 	bindAddr   string
@@ -79,6 +84,7 @@ type config struct {
 	subsonicEnabled        bool
 	skipImport             bool
 	backfillMediaOnStartup bool
+	imageRetryAfterDays    int
 	allowedHosts           []string
 	allowAllHosts          bool
 	allowedOrigins         []string
@@ -167,6 +173,15 @@ func loadConfig(getenv func(string) string, version string) (*config, error) {
 	cfg.backfillMediaOnStartup = true
 	if backfillMediaOnStartup := getenv(BACKFILL_MEDIA_ON_STARTUP_ENV); backfillMediaOnStartup != "" {
 		cfg.backfillMediaOnStartup = parseBool(backfillMediaOnStartup)
+	}
+
+	cfg.imageRetryAfterDays = defaultImageRetryAfterDays
+	if v := getenv(IMAGE_RETRY_AFTER_DAYS_ENV); v != "" {
+		days, err := strconv.Atoi(v)
+		if err != nil || days < 0 {
+			return nil, fmt.Errorf("loadConfig: %s must be a non-negative integer, got %q", IMAGE_RETRY_AFTER_DAYS_ENV, v)
+		}
+		cfg.imageRetryAfterDays = days
 	}
 
 	fetchImageDuringImport := getenv(FETCH_IMAGES_DURING_IMPORT_ENV)

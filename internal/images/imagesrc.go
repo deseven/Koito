@@ -107,6 +107,7 @@ func GetArtistImage(ctx context.Context, opts ArtistImageOpts) (string, error) {
 	} else {
 		l.Debug().Msg("GetArtistImage: LastFM image fetching is disabled")
 	}
+	l.Debug().Msg("GetArtistImage: No provider returned an artist image")
 	return "", nil
 }
 
@@ -167,7 +168,11 @@ func GetAlbumImage(ctx context.Context, opts AlbumImageOpts) (string, error) {
 		}
 		return img, nil
 	}
-	l.Warn().Msg("GetAlbumImage: No image providers are enabled")
+	if !imgsrc.subsonicEnabled && !imgsrc.caaEnabled && !imgsrc.lastfmEnabled && !imgsrc.deezerEnabled {
+		l.Warn().Msg("GetAlbumImage: No image providers are enabled")
+		return "", nil
+	}
+	l.Debug().Msg("GetAlbumImage: No provider returned an album image")
 	return "", nil
 }
 
