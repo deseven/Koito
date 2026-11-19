@@ -30,16 +30,22 @@ type SubsonicClient struct {
 	artistsIndex map[string]string
 }
 
+// SubsonicAlbum is an album returned by search3.
+type SubsonicAlbum struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Artist    string `json:"artist"`
+	CoverArt  string `json:"coverArt"`
+	MBID      string `json:"musicBrainzId"`
+	SongCount int    `json:"songCount"`
+}
+
 type SubsonicAlbumResponse struct {
 	SubsonicResponse struct {
 		Status        string `json:"status"`
 		SearchResult3 struct {
-			Album []struct {
-				CoverArt string `json:"coverArt"`
-				Artist   string `json:"artist"`
-				MBID     string `json:"musicBrainzId"`
-			} `json:"album"`
-			Song []SubsonicSong `json:"song"`
+			Album []SubsonicAlbum `json:"album"`
+			Song  []SubsonicSong  `json:"song"`
 		} `json:"searchResult3"`
 	} `json:"subsonic-response"`
 }
@@ -153,6 +159,26 @@ func (c *SubsonicClient) coverArtURL(id string) string {
 		return ""
 	}
 	return c.url + fmt.Sprintf(subsonicCoverArtFmtStr, c.authParams, url.QueryEscape(id))
+}
+
+// SearchSongs returns the songs matching a free text query. Used by maintenance
+// tooling to resolve track metadata against the server's library.
+func (c *SubsonicClient) SearchSongs(ctx context.Context, query string) ([]SubsonicSong, error) {
+	resp := new(SubsonicAlbumResponse)
+	if err := c.getEntity(ctx, fmt.Sprintf(subsonicSongSearchFmtStr, c.authParams, url.QueryEscape(query)), resp); err != nil {
+		return nil, fmt.Errorf("SearchSongs: %w", err)
+	}
+	return resp.SubsonicResponse.SearchResult3.Song, nil
+}
+
+// SearchAlbums returns the albums matching a free text query. SongCount is the
+// number of tracks the server knows for the album.
+func (c *SubsonicClient) SearchAlbums(ctx context.Context, query string) ([]SubsonicAlbum, error) {
+	resp := new(SubsonicAlbumResponse)
+	if err := c.getEntity(ctx, fmt.Sprintf(subsonicAlbumSearchFmtStr, c.authParams, url.QueryEscape(query)), resp); err != nil {
+		return nil, fmt.Errorf("SearchAlbums: %w", err)
+	}
+	return resp.SubsonicResponse.SearchResult3.Album, nil
 }
 
 func (c *SubsonicClient) GetAlbumImage(ctx context.Context, mbid uuid.UUID, artist, album string) (string, error) {

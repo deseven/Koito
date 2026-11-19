@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path"
 	"time"
@@ -103,6 +104,47 @@ func (s *Sqlite) QueryRow(query string, args ...any) *sql.Row {
 // interface this package implements.
 func (s *Sqlite) Query(query string, args ...any) (*sql.Rows, error) {
 	return s.db.Query(query, args...)
+}
+
+// MoveTrackToRelease moves a track to another release and associates that
+// release with the track's artists. If the old release is left without any
+// tracks it is deleted. Used by maintenance commands; not part of the DB
+// interface this package implements.
+func (s *Sqlite) MoveTrackToRelease(ctx context.Context, trackID, releaseID int32) error {
+	if trackID == 0 || releaseID == 0 {
+		return errors.New("MoveTrackToRelease: track id and release id must be specified")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("MoveTrackToRelease: BeginTx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var previous int32
+	if err := tx.QueryRowContext(ctx,
+		`SELECT release_id FROM tracks WHERE id = ?`, trackID).Scan(&previous); err != nil {
+		return fmt.Errorf("MoveTrackToRelease: fetch current release: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE tracks SET release_id = ? WHERE id = ?`, releaseID, trackID); err != nil {
+		return fmt.Errorf("MoveTrackToRelease: move track: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO artist_releases (artist_id, release_id, is_primary)
+		SELECT at2.artist_id, ?, 0 FROM artist_tracks at2 WHERE at2.track_id = ?`,
+		releaseID, trackID); err != nil {
+		return fmt.Errorf("MoveTrackToRelease: associate artists: %w", err)
+	}
+	if previous != releaseID {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM releases
+			WHERE id = ?
+			  AND NOT EXISTS (SELECT 1 FROM tracks WHERE release_id = ?)`,
+			previous, previous); err != nil {
+			return fmt.Errorf("MoveTrackToRelease: delete emptied release: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Sqlite) Ping(ctx context.Context) error {
