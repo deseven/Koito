@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/gabehf/koito/internal/cfg"
 	"github.com/gabehf/koito/internal/logger"
@@ -135,9 +136,12 @@ func (c *SubsonicClient) GetAlbumImage(ctx context.Context, mbid uuid.UUID, arti
 	if len(resp.SubsonicResponse.SearchResult3.Album) < 1 {
 		return "", fmt.Errorf("GetAlbumImage: failed to get album art from subsonic")
 	}
-	for _, album := range resp.SubsonicResponse.SearchResult3.Album {
-		if album.Artist == artist {
-			return cfg.SubsonicUrl() + fmt.Sprintf(subsonicCoverArtFmtStr, c.authParams, url.QueryEscape(resp.SubsonicResponse.SearchResult3.Album[0].CoverArt)), nil
+	// Subsonic servers (e.g. Navidrome) may differ in letter case from the
+	// scrobbled metadata, so compare artists case-insensitively and use the
+	// cover art of the album that actually matched.
+	for _, candidate := range resp.SubsonicResponse.SearchResult3.Album {
+		if strings.EqualFold(candidate.Artist, artist) {
+			return cfg.SubsonicUrl() + fmt.Sprintf(subsonicCoverArtFmtStr, c.authParams, url.QueryEscape(candidate.CoverArt)), nil
 		}
 	}
 	return "", fmt.Errorf("GetAlbumImage: failed to get album art from subsonic")
