@@ -319,21 +319,40 @@ func TestSubmitListen_DoNotOverwriteMbzIDs(t *testing.T) {
 	err := catalog.SubmitListen(ctx, store, opts)
 	require.NoError(t, err)
 
-	// Verify that the listen was saved
+	// The existing track has the same title but a different recording MBID, so
+	// it is a distinct recording (see matchTrackByTrackInfo): a new track must be
+	// created and the listen attached to it, leaving the existing track untouched.
+	var newTrackID int
+	err = store.QueryRow(`
+	SELECT id FROM tracks WHERE musicbrainz_id = $1
+	`, trackMbzID).Scan(&newTrackID)
+	require.NoError(t, err, "expected a new track to be created for the distinct recording")
+	assert.NotEqual(t, 1, newTrackID, "new track should not reuse the existing track with a different MBID")
+
+	// Verify that the listen was saved against the new track
 	exists, err := store.RowExists(`
     SELECT EXISTS (
       SELECT 1 FROM listens
       WHERE track_id = $1
-    )`, 1)
+    )`, newTrackID)
 	require.NoError(t, err)
 	assert.True(t, exists, "expected listen row to exist")
 
-	// verify that track, release group, and artist are existing ones and not duplicates
+	// the existing track must keep its original MBID and must not receive the listen
 	count, err := store.Count(`
-	SELECT COUNT(*) FROM tracks_with_title WHERE musicbrainz_id = $1
-	`, trackMbzID)
+	SELECT COUNT(*) FROM tracks WHERE id = 1 AND musicbrainz_id = '00000000-0000-0000-0000-000000001001'
+	`)
 	require.NoError(t, err)
-	assert.Equal(t, 0, count, "duplicate track created")
+	assert.Equal(t, 1, count, "existing track MBID should not be overwritten")
+	exists, err = store.RowExists(`
+    SELECT EXISTS (
+      SELECT 1 FROM listens
+      WHERE track_id = 1
+    )`)
+	require.NoError(t, err)
+	assert.False(t, exists, "listen should not be attached to the existing track")
+
+	// verify that release group and artist are existing ones and not duplicates
 	count, err = store.Count(`
 	SELECT COUNT(*) FROM releases_with_title WHERE musicbrainz_id = $1
 	`, releaseMbzID)
